@@ -9,6 +9,7 @@ To reproduce this analysis, download the following `.json.gz` files from the [UC
 - `goodreads_book_authors.json.gz`
 - `goodreads_reviews_dedup.json.gz`
 - `goodreads_book_works.json.gz`
+
 Then, run the following scripts in order:
 - `scripts/01-clean_model_data.R`
 - `scripts/02-model_data.R`
