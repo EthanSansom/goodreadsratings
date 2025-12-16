@@ -1,258 +1,606 @@
 ---
-title: "My title"
-subtitle: "My subtitle if needed"
+title: "The Impact of Winning a Literary Award on Goodreads Ratings of Novels, 2010-2016"
 author: 
-  - First author
-  - Another author
-thanks: "Code and data are available at: [https://github.com/RohanAlexander/starter_folder](https://github.com/RohanAlexander/starter_folder)."
+  - Ethan Sansom
+thanks: "Code and data are available at: [https://github.com/EthanSansom/goodreadsratings](https://github.com/EthanSansom/goodreadsratings)."
 date: today
 date-format: long
-abstract: "First sentence. Second sentence. Third sentence. Fourth sentence."
+abstract: "In the 2014 paper “The Paradox of Publicity: How Awards Can Negatively Affect the Evaluation of Quality.” authors Kovács and Sharke find that, counterintuitively, winning a prestigious literary award decreased readers’ perception of prizewinning novels’ quality. To test the persistence of their findings, this analysis repeats a portion of the authors’ experiment using Goodreads reviews of prizewinning novels between 2010 and 2016 with a difference-in-differences design. Contrary to previous results, we find no evidence that winning a literary prize affects the post-award Goodreads ratings of prizewinning novels relative to other similar works. While these finding suggest that the ‘paradox of publicity’ may not hold in general, there are also several limitations to this analysis and of online review data in general which we discussed further."
 format: pdf
+header-includes:
+  - \usepackage{float}
+  - \floatplacement{table}{H}
 number-sections: true
 bibliography: references.bib
 ---
 
 ```{r}
+#| label: setup
 #| include: false
 #| warning: false
 #| message: false
 
-library(tidyverse)
-library(palmerpenguins)
+library(here)
+library(modelsummary)
+library(tinytable)
+library(arrow)
+library(dplyr)
+library(stringr)
+library(lubridate)
+library(ggplot2)
+library(readr)
+library(purrr)
+library(fixest)
+
+set.seed(123)
 ```
 
+```{r}
+#| label: load-data
+#| include: false
+
+finalist_works <- read_parquet(here("data/02-analysis_data/finalist_works.parquet"))
+works_to_books <- read_parquet(here("data/02-analysis_data/works_to_books.parquet"))
+book_reviews <- read_parquet(here("data/02-analysis_data/book_reviews.parquet"))
+
+finalist_works <- finalist_works |> filter(year <= 2016)
+
+matched_pairs_reviews <- read_parquet(here("data/02-analysis_data/matched_pairs_reviews.parquet"))
+reviews_sample <- read_parquet(here("data/02-analysis_data/reviews_sample.parquet"))
+```
+
+```{r}
+#| label: summary-stats
+#| include: false
+
+n_reviews <- matched_pairs_reviews |> summarize(n = n(), .by = work_id) |> pull(n)
+n_dyads <- n_distinct(matched_pairs_reviews$work_id) / 2
+
+numb <- function(x, n = 2) prettyNum(round(x, n), big.mark = ",")
+perc <- function(x, n = 2) paste0(round(x * 100, n), "%")
+```
 
 # Introduction
 
-Overview paragraph
+Several studies have shown the counterintuitive result that awards granted to
+cultural products have an adverse effect on consumers' perception of said products'
+quality. @kovacs2014 demonstrated that novels which received prestigious literary
+awards between 2007-2011 were rated lower than other similar novels by reviewers
+on Goodreads.com, a social book curation and review platform. More recently,
+@rossi2024 observed that consumer ratings of movies declined after they were 
+nominated for an Academy Award and @rita2022 found that reviewers expressed fewer
+positive sentiments of restaurants' food, service, and ambiance after they received
+a Michelin star. All papers suggested that an increase in consumer expectations
+and a broader audience resulting from the reception of an award negatively impacted
+consumers' perception of quality.
 
-Estimand paragraph
+Such studies, which consider a 'treated' sample of award winners, have necessarily 
+small number of treated subjects compared to a large number of potential control 
+subjects (i.e. cultural products which did not win an award). This can present
+challenges to inference in common identification strategies, such as a difference-in-differences
+design, when few treated groups are available or there are discrepancies in the
+number of observations (e.g. reviews) between subjects (e.g. restaurants, movies,
+books) [@ferman2019]. In this analysis, we repeat portions of the @kovacs2014 
+experiment to assess the effect of winning a literary award on the Goodreads 
+ratings of prizewinning novels between 2010 and 2016, using a large dataset of 
+Goodreads reviews collected in 2017 [@mengting2018; @mengting2019]. The purpose 
+is twofold, first to re-test the hypothesis that awards can have a negative impact
+on consumers' perception of quality and second to comment on the methodological
+challenges of this and other experiments which rely on online reviews as a measure 
+of perceived quality.
 
-Results paragraph
+The estimand of interest is the average effect of winning a literary award on
+a novel's Goodreads rating following the award announcement, compared to the 
+counterfactual trend in ratings had the novel not won an award. Given that we
+cannot observe the counterfactual case (the natural trend of a novel's ratings
+over time in the absence of an award shock) we instead compare the change in
+winning novel's Goodreads ratings trajectories relative to that of comparable
+non-prizewinning novels. 
 
-Why it matters paragraph
+Contrary to prior studies, we find no evidence of a negative (or positive) impact
+of award winning on the Goodreads ratings of prizewinning novels. Further, no
+evidence is found that prizewinning novels become more popular (receive a greater
+number of reviews) than other comparable novels, failing to support the hypothesis
+that awards draw a broader reader base which contributes to lower reviews. Potential
+sources of this discrepancy and limitations of this analysis are discussed in
+Section @sec-weaknesses.
 
-Telegraphing paragraph: The remainder of this paper is structured as follows. @sec-data....
+In the following Data Section @sec-data, the sample of novels considered for
+this analysis is described and an overview of the Goodreads review dataset
+is provided [@mengting2018; @mengting2019]. Two difference-in-differences
+models estimating the effect of award-winning on average Goodreads ratings
+and review volume are motivated and specified in the Models Section @sec-models,
+followed by a discussion of the model results in the Results Section @sec-results.
+Finally, in the Discussion Section @sec-discussion we summarize the results and
+limitations of this analysis.
 
-
-
-
-
+This paper uses the R statistical software [@citeR] to load, clean, visualize,
+and model Goodreads ratings. The package `here` [@here] is used to construct
+relative file paths, packages `readr` [@readr] and `arrow` [@arrow] are used
+for reading and writing datasets and models, `dplyr` [@dplyr], `purrr` [@purrr],
+`stringr` [@stringr], and `lubridate` [@lubridate] are used for cleaning data
+include character and date variables, `fixest` [@fixest] is used for fitting
+the fixed-effects regression models described in Section @sec-models, and
+finally `modelsummary` [@modelsummary], `tinytable` [@tinytable], and `ggplot2`
+[@ggplot2] are used to generate tables and plots.
 
 # Data {#sec-data}
 
 ## Overview
 
-We use the statistical programming language R [@citeR].... Our data [@shelter].... Following @tellingstories, we consider...
+To promote comparability, we consider the same slate of literary awards studied
+in @kovacs2014, those being the Man Booker Prize, the National Book Award (fiction
+and non-fiction categories), the PEN/Faulkner Award, and the National Book Critics 
+Circle Award (fiction, non-fiction, memoir/autobiography, and biography categories).
+These awards are chosen for their prestige and reach to ensure that they represent
+a significant shock to the prizewinning novels' status. As part of the selection
+process, judges for each of these awards name a shortlist of 3 to 7 novels from
+which the winner is chosen. Shortlisted novels are announced publicly, several
+weeks or months prior to the announcement of a winner. A dataset of shortlisted
+and winning novels, as well as the announcement dates of both the shortlist and
+winner, was collected manually for each award in the years 2010 to 2016. Shown
+below in Table @tbl-finalist-books-sample are the novels shortlisted for the 2010
+Man Booker Prize.
 
-Overview text
+```{r}
+#| label: tbl-finalist-books-sample
+#| tbl-cap: "2010 Man Booker Prize Shortlist"
+#| warning: false
+#| message: false
+#| echo: false
 
-## Measurement
+finalist_works |>
+  filter(award == "Man Booker Prize", year == 2010) |>
+  select(
+    `Author` = author_name,
+    `Title` = title,
+    `Type` = type,
+    `Year` = year,
+    `Shortlist Date` = shortlist_date,
+    `Winner Date` = winner_date
+  ) |>
+  mutate(Type = str_to_title(Type)) |>
+  arrange(desc(Type)) |>
+  tt()
+```
+
+Reviews of these novels from their publication date to late 2017 are sourced
+from the UCSD Book Graph, a dataset of over 15 million reviews of 2,360,655 books
+from around 465 thousand users scraped from Goodreads.com [@mengting2018; @mengting2019].
+Prizewinning and shortlisted novels were matched to novels recorded on Goodreads
+by title and author, with matches later verified manually. Complete book reviews in
+the dataset include a plain-text review of a novel alongside an integer rating of
+1 to 5 stars. Inline with @kovacs2014, this analysis considers only ratings which
+are accompanied by a plain-text review.
+
+## Measurement {#sec-measurement}
+
+Goodreads ratings are user-submitted evaluations of a novel's quality on an
+integer scale from 1 to 5. The ratings are collected via a web scrape of publicly
+available data on the profiles of Goodreads users in late 2017 and may not contain
+all reviews available on Goodreads, given that information about the web scraping
+process is not provided [@mengting2018; @mengting2019]. Further, ratings may be
+missing due to users deleting their profile or reviews over time. As a proxy
+for a users subjective evaluation of a novel's quality, online ratings are only
+partially reliable. Online ratings, for example, are subject to a herding effect
+wherein customers' reviews are biased towards the average of previous reviews [@gael2018].
+A substantial portion of Goodreads reviews (around 9\%) are estimated to be
+sponsored reviews, which could bias ratings upwards relative to reviewers' actual
+assessment of quality [@hu2023].
 	
-Some paragraphs about how we go from a phenomena in the world to an entry in the dataset.
+## Sample Selection {#sec-matching}
 
-## Outcome variables
+A challenge to identifying the effect of winning an award on a novel's perceived
+quality over time is distinguishing between trends in ratings attributable to
+the novel's inherent features and trends in ratings attributable to winning an 
+award. For instance, prize-winning novels may be true classics, whose relevance 
+and appeal do not deteriorate over time even in the absence of an award. In this 
+case, an observed post-award increase or persistence in ratings, relative to all 
+other books, may reflect the continuation of an existing trend in ratings rather
+than a causal effect of winning an award. Addressing this concern requires 
+comparing prize-winning novels to other novels with similar pre-award rating 
+trajectories, so that discrepancies in the post-award ratings of prize-winning 
+novels and the comparison group can be plausibly attributed to the award decision.
 
-Add graphs, tables and text. Use sub-sub-headings for each outcome variable or update the subheading to be singular.
+@kovacs2014 note that the awards process itself provides such a comparison group.
+Several weeks or months prior to choosing a winning novel, each award's judges
+publicly name three to five shortlisted novels from which the winner is selected.
+These shortlisted books are deemed to be similar to the prizewinning novels in
+terms of quality by the awards' judging panels and share a similar publication 
+date (typically within a year of the award being announced), meaning they are
+more likely than other books on Goodreads to follow ratings trajectories similar
+to that of their prizewinning competitor.
 
+From 2010 to 2016, there were 55 prizewinning novels^[The Sellout by Paul Beatty won
+both the 2015 Man Booker Prize and the 2016 National Book Critics Circle Award for
+fiction.] and 205 shortlisted finalists from the 4 prizes included in this analysis.
+For each prize, category, and year, the shortlisted novel with the lowest absolute
+difference in mean pre-award ratings compared to the prizewinning novel was chosen
+as the comparison group, resulting in 55 matched-pairs of prizewinning and finalist 
+novels. This approach is meant to limit any unobserved differences in the prizewinning 
+novels and their comparison group which could confound the impact of award-winning on
+the ratings of prizewinning novels [@kovacs2014]. These 55 pairs were reduced
+to a final 45 pairs of novels, after omitting novels with no reviews in either
+the pre-award or post-award periods and duplicate nominations.
 
+## Variables
 
-Some of our data is of penguins (@fig-bills), from @palmerpenguins.
+Table @tbl-reviews-sample shows a sample of 5 observations of variables relevant for
+this analysis. The Goodreads reviews are uniquely identified by a User ID, Review
+ID, and a Book ID (truncated for width). Each review is accompanied by a rating
+between 1 and 5 stars and is time-stamped, allowed reviews to be identified as
+occurring either before or after a particular award's winner is announced.
 
 ```{r}
-#| label: fig-bills
-#| fig-cap: Bills of penguins
-#| echo: false
-
-ggplot(penguins, aes(x = island, fill = species)) +
-  geom_bar(alpha = 0.8) +
-  scale_fill_manual(values = c("darkorange","purple","cyan4"),
-                    guide = "none") +
-  theme_minimal() +
-  facet_wrap(~species, ncol = 1) +
-  coord_flip()
-```
-
-Talk more about it.
-
-And also planes (@fig-planes). (You can change the height and width, but don't worry about doing that until you have finished every other aspect of the paper - Quarto will try to make it look nice and the defaults usually work well once you have enough text.)
-
-```{r}
-#| label: fig-planes
-#| fig-cap: Relationship between wing length and width
-#| echo: false
+#| label: tbl-reviews-sample
+#| tbl-cap: "Sample of Goodreads Reviews"
 #| warning: false
 #| message: false
+#| echo: false
 
-analysis_data <- read_csv(here::here("data/02-analysis_data/analysis_data.csv"))
-
-analysis_data |> 
-  ggplot(aes(x = width, y = length)) +
-  geom_point(alpha = 0.8) +
-  theme_minimal() +
-  labs(x = "Wing width (mm)",
-       y = "Wing length (mm)")
+book_reviews |>
+  slice_sample(n = 5) |>
+  mutate(
+    across(c(user_id, book_id, review_id), \(x) paste0(str_sub(x, 1, 5), "...")),
+    review_text = paste0(trimws(str_sub(review_text, 1, 15)), "...")
+  ) |>
+  select(
+    `User ID` = user_id,
+    `Book ID` = book_id,
+    `Review ID` = review_id,
+    `Rating` = rating,
+    `Review` = review_text,
+    `Timestamp` = date_added
+  ) |>
+  tt()
 ```
 
-Talk way more about it. 
-
-## Predictor variables
-
-Add graphs, tables and text.
-
-Use sub-sub-headings for each outcome variable and feel free to combine a few into one if they go together naturally.
-
-
-
-
-
-
-
-
-# Model
-
-The goal of our modelling strategy is twofold. Firstly,...
-
-Here we briefly describe the Bayesian analysis model used to investigate... Background details and diagnostics are included in [Appendix -@sec-model-details].
-
-## Model set-up
-
-Define $y_i$ as the number of seconds that the plane remained aloft. Then $\beta_i$ is the wing width and $\gamma_i$ is the wing length, both measured in millimeters.  
-
-\begin{align} 
-y_i|\mu_i, \sigma &\sim \mbox{Normal}(\mu_i, \sigma) \\
-\mu_i &= \alpha + \beta_i + \gamma_i\\
-\alpha &\sim \mbox{Normal}(0, 2.5) \\
-\beta &\sim \mbox{Normal}(0, 2.5) \\
-\gamma &\sim \mbox{Normal}(0, 2.5) \\
-\sigma &\sim \mbox{Exponential}(1)
-\end{align}
-
-We run the model in R [@citeR] using the `rstanarm` package of @rstanarm. We use the default priors from `rstanarm`.
-
-
-### Model justification
-
-We expect a positive relationship between the size of the wings and time spent aloft. In particular...
-
-We can use maths by including latex between dollar signs, for instance $\theta$.
-
-
-# Results
-
-Our results are summarized in @tbl-modelresults.
+Among the 90 selected novels, the number of ratings is highly variable, with
+the least reviewed book having just 4 ratings compared to a maximum of 5,356 
+ratings (see Table @tbl-ratings-summary).
 
 ```{r}
-#| echo: false
-#| eval: true
+#| label: tbl-ratings-summary
+#| tbl-cap: "Descriptive Reviews Statistics"
 #| warning: false
 #| message: false
-
-library(rstanarm)
-
-first_model <-
-  readRDS(file = here::here("models/first_model.rds"))
-```
-
-```{r}
 #| echo: false
-#| eval: true
-#| label: tbl-modelresults
-#| tbl-cap: "Explanatory models of flight time based on wing width and wing length"
-#| warning: false
 
-modelsummary::modelsummary(
-  list(
-    "First model" = first_model
-  ),
-  statistic = "mad",
+reviews_summary <- matched_pairs_reviews |>
+  mutate(n_reviews = if_else(row_number() == 1L, n(), NA), .by = work_id) |>
+  mutate(type = str_to_sentence(type)) |>
+  rename(
+    `Reviews per Book` = n_reviews,
+    `Rating` = rating,
+    `Timestamp` = date_added,
+    `Type` = type
+  )
+
+SD <- function(x) if (is.POSIXct(x)) NA else sd(x, na.rm = TRUE)
+
+datasummary(
+  (`Reviews per Book` + `Rating` + `Timestamp`) ~ Min + Max + Mean + SD,
+  data = reviews_summary,
   fmt = 2
 )
 ```
 
+The average rating for all considered novels is around 4 stars, with prizewinning
+novels having slightly higher average ratings in the pre-award period (see Table @tbl-ratings-balance) and around 50 more reviews than finalists on average.
 
+```{r}
+#| label: tbl-ratings-balance
+#| tbl-cap: "Balance of Ratings for Winners and Finalists Prior to Award Announcement"
+#| warning: false
+#| message: false
+#| echo: false
 
+datasummary_balance(
+  ~Type,
+  data = reviews_summary |> 
+    filter(post_announcement == 0) |>
+    select(`Reviews per Book`, `Rating`, `Type`),
+  fmt = 2
+)
+```
 
-# Discussion
+Figure @fig-ratings-distribution compares the distribution of ratings for prizewinning
+novels and finalists against that of a random sample of 10,000 novels not included
+in any of the award shortlists. Winners are more likely to attain a 5 star
+review (around 39\% of ratings) compared to finalists and other novels (around 36\%),
+but have a similar distribution of 4 and 1 star reviews. The randomly sampled novels
+are notably more likely to have a middle 3 star review (around 20\% of ratings)
+compared to both finalists and award winners.
 
-## First discussion point {#sec-first-point}
+```{r}
+#| label: fig-ratings-distribution
+#| fig-cap: "Average Distribution of Goodreads Ratings by Award Status"
+#| fig-cap-location: top
+#| warning: false
+#| message: false
+#| echo: false
 
-If my paper were 10 pages, then should be be at least 2.5 pages. The discussion is a chance to show off what you know and what you learnt from all this. 
+mean_ratings <- reviews_sample |> count(rating) |> mutate(perc = n / sum(n))
 
-## Second discussion point
+mean_finalist_ratings <- book_reviews |>
+  inner_join(finalist_works, by = "work_id") |>
+  count(rating, type) |>
+  mutate(perc = n / sum(n), .by = type) |>
+  bind_rows(
+    mean_ratings |> mutate(type = "sample")
+  ) |>
+  mutate(
+    type = ordered(str_to_title(type), rev(c("Winner", "Finalist", "Sample")))
+  )
 
-Please don't use these as sub-heading labels - change them to be what your point actually is.
+ggplot(mean_finalist_ratings) +
+  geom_col(aes(x = rating, y = perc, fill = type), position = "dodge") +
+  scale_y_continuous(labels = scales::label_percent()) +
+  labs(
+    x = "Rating (1–5 stars)",
+    y = "Percentage of All Ratings",
+    fill = "Novel Type"
+  ) +
+  theme_minimal()
+```
 
-## Third discussion point
+# Models {#sec-models}
 
-## Weaknesses and next steps
+## Ratings Model {#sec-ratings-model}
 
-Weaknesses and next steps should also be included.
+Following @kovacs2014, we use a difference-in-differences design with matched-pair 
+fixed effects to estimate the effect of winning an award on the Goodreads ratings 
+of novels.
+
+\begin{align}
+\text{Rating}_{ijk} = 
+\beta_1 \text{Winner}_{i} + 
+\beta_2 \text{Post}_{k} + 
+\beta_3 (\text{Winner}_{i} \times \text{Post}_{k}) +
+\sum_{j = 1}^{J} \alpha_{j} \text{Pair}_{j} +
+\epsilon_{ijk}
+\end{align}
+
+The outcome $\text{Rating}_{ijk}$ is the $k$th rating of the $i$th book in the 
+$j$th matched pair of novels. `r n_dyads` pairs of novels are considered ($j = 1, \dots, 45$)
+each containing one prizewinning novel and a shortlisted finalist ($i = 1, 2$).
+The number of ratings varies by novel, with a mean count of `r numb(mean(n_reviews))` 
+(SD `r numb(sd(n_reviews))`).
+
+Covariates $\text{Pair}_{j}$ are indicators for whether a rating belongs to a
+book in the $j$th match pair. The coefficients $\alpha_j$ are the matched-pair
+fixed effects, which are interpreted as the average baseline rating of novels
+in pair $j$. These fixed-effects absorb baseline characteristics shared by
+each pair, such as the overall quality of a shortlisted novels in a given year.
+
+$\text{Winner}_i$ is an indicator for whether a rating is of a prizewinning
+novel and $\text{Post}_{j}$ an indicator for whether a rating occurred after
+the winner of the $j$th matched-pair's award was announced. The interaction
+$\text{Winner}_{i} \times \text{Post}_{j}$ is equal to 1 for ratings of prizewinning
+novels given after their award was announced and 0 otherwise. $\beta_1$ is interpreted
+as the difference in average ratings between the prizewinning novel and it's
+corresponding finalist in the pre-award period and $\beta_2$ as the average change
+in ratings of finalists from the pre-award to post-award period. $\beta_3$ is the difference-in-differences estimator, representing the effect of the award on
+ratings. In particular, $\beta_3$ measures the difference in the change of the
+prizewinning novel's average ratings from the pre-award to post-award period
+relative to the change in the average ratings of the corresponding finalist.
+
+The inclusion of matched-pair fixed effects $\alpha_j$ are important for
+isolating the effect of winning an award. By absorbing characteristics shared
+by both novels in each matched pair, these fixed-effects ensure that the
+difference-in-differences estimator compares each winner with it's direct rival,
+rather than comparing all prizewinning novels to all finalists across different 
+award years with varying baseline qualities.
+
+$\epsilon_{ijk}$ is the idiosyncratic error term. Errors are assumed to be independent for ratings in different matched-pairs $j$ and $j'$, but are arbitrarily correlated 
+for ratings of novels within the same matched pair. Correlation is assumed at the matched-pair, rather than the novel, level to account for both autocorrelation of 
+reviews for the same novel over time and the correlation between the winner and 
+finalist within the same award cycle, which share a similar publishing date and 
+are subject to the same time-specific trends in reviews. Accordingly, the standard
+errors of coefficient estimates are clustered at the matched-pair level.
+
+## Popularity Model {#sec-count-model}
+
+A secondary effect of winning an award on popularity is estimated using a Negative
+Binomial general linear model, using the same difference-in-differences covariates
+described in Section @sec-ratings-model, with the number of reviews per novel as the
+outcome variable.
+
+Let $\text{NumReviews}_{ijt}$ denote the number of reviews of the $i$th novel
+in the $j$th matched-pair in the $t$th period, where $t$ is either pre-award
+or post-award. We assume that $\text{NumReviews}_{ijt}$ follows a Negative
+Binomial distribution with a dispersion parameter $\theta$ and a conditional
+expectation $\mu_{ijt} = \text{E}\left[\text{NumReviews}_{ijt} \mid \beta, \alpha \right]$
+modeled as:
+
+\begin{align}
+\mu_{ijt} 
+&= \text{exp}\left(\beta_1 \text{Winner}_{i} + 
+\beta_2 \text{Post}_{k} + 
+\beta_3 (\text{Winner}_{i} \times \text{Post}_{k}) +
+\sum_{j = 1}^{J} \alpha_{j} \text{Pair}_{j}\right) \\
+&= 
+\text{exp}\left(\beta_1 \text{Winner}_{i} \right)
+\text{exp}\left(\beta_2 \text{Post}_{k} \right) 
+\text{exp}\left(\beta_3 (\text{Winner}_{i} \times \text{Post}_{k}) \right)
+\text{exp}\left(\sum_{j = 1}^{J} \alpha_{j} \text{Pair}_{j}\right) \\
+\end{align}
+
+Note that in this model, coefficients affect the conditional mean multiplicatively
+rather than additively. A $\beta_3$ of $0.40$ for example implies that prizewinning 
+novels review volume increased by a factor of $\text{exp}(0.40) \approx 1.5$ times 
+in post-award period, relative to the change in review volume of their corresponding
+finalists.
+
+A Negative Binomial distribution is chosen over the usual Poisson distribution
+for for counts due to its flexible mean-variance relationship. In particular, the 
+Poisson model imposes the restriction that the conditional variance of $\text{NumRatings}_{ijt}$ is equal to the conditional mean $\mu_{ijt}$, while the Negative Binomial variance is a function of $\mu_{ijt}$ and the dispersion parameter $\theta$,
+allowing more flexibility [@hoffmann2016].
 
 \newpage
 
-\appendix
+# Results {#sec-results}
 
-# Appendix {-}
-
-
-# Additional data details
-
-# Model details {#sec-model-details}
-
-## Posterior predictive check
-
-In @fig-ppcheckandposteriorvsprior-1 we implement a posterior predictive check. This shows...
-
-In @fig-ppcheckandposteriorvsprior-2 we compare the posterior with the prior. This shows... 
+Table @tbl-ratings-results displays the results of models described in Sections @sec-ratings-model
+and @sec-count-model.
 
 ```{r}
 #| eval: true
-#| echo: false
-#| message: false
+#| label: tbl-ratings-results
+#| tbl-cap: "Effect of Winning an Award on Novel Ratings and Popularity"
 #| warning: false
-#| label: fig-ppcheckandposteriorvsprior
-#| layout-ncol: 2
-#| fig-cap: "Examining how the model fits, and is affected by, the data"
-#| fig-subcap: ["Posterior prediction check", "Comparing the posterior with the prior"]
+#| echo: false
 
-pp_check(first_model) +
-  theme_classic() +
-  theme(legend.position = "bottom")
+ratings_model <- read_rds(here("models/ratings_model.rds"))
+popularity_model <- read_rds(here("models/popularity_model.rds"))
 
-posterior_vs_prior(first_model) +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(legend.position = "bottom") +
-  coord_flip()
+rows <- tribble(
+  ~term, ~`Ratings`, ~`Count of Reviews`,
+  "Regression Type", "Linear", "Negative Binomial"
+)
+attr(rows, "position") <- "gof_start"
+
+modelsummary::modelsummary(
+  list(
+    "Ratings" = ratings_model,
+    "Count of Reviews" = popularity_model
+  ),
+  coef_rename = c(
+    "winner" = "Winner",
+    "post_announcement" = "Post",
+    "winner:post_announcement" = "Winner x Post"
+  ),
+  statistic = "{std.error} ({p.value})",
+  gof_map = tribble(
+    ~raw, ~clean, ~fmt,
+    "nobs", "N", 0,
+    "aic", "AIC", 1,
+    "bic", "BIC", 1
+  ),
+  add_rows = rows,
+  notes = c(
+    "Matched-pair clustered standard errors are shown below coefficient estimates (p-values in parentheses).",
+    "Both models include matched-pair fixed effects."
+  )
+)
 ```
 
-## Diagnostics
+We do not observe the paradox of publicity noted by @kovacs2014 in the ratings
+model results. The difference-in-differences estimate of Winner x Post is near
+0 ($\beta_3 = -0.028, p > 0.05$) and insignificant at the 5\% level, meaning that
+winning an award is estimated to have no evidence of an effect on the average 
+post-awards ratings of prizewinning novels compared to finalist novels. This is 
+in contrast to the large and significant effect size (an estimated 0.171 star 
+decline in average ratings) found by @kovacs2014.
 
-@fig-stanareyouokay-1 is a trace plot. It shows... This suggests...
+Prizewinning novels are estimated to have a slightly higher and average rating
+($\beta_1 = 0.072, p < 0.05$) than finalists in the pre-award period, although
+the difference is less than 0.1 stars. This pre-award difference is mechanically
+small, due to the matching procedure noted in section @sec-matching, which selected
+finalist novels with similar pre-award average ratings to their corresponding
+winning novel. The ratings of finalists are estimated to decline ($\beta_2 = -0.099, p < 0.05$)
+in the post-award period, although the effect on ratings is again less than 0.1 
+stars.
 
-@fig-stanareyouokay-2 is a Rhat plot. It shows... This suggests...
+Similarly, award winning is not shown to significantly effect the number of
+reviews received by prizewinning novels relative to finalists. Award winning
+novels are estimated to be slightly more popular than finalists in the pre-award
+period ($\text{exp}(\beta_1) \approx 1.32, p > 0.05$) and finalists are estimated
+to receive a higher volume of reviews in the post-award period compared to the
+pre-award period ($\text{exp}(\beta_2) \approx 1.86, p < 0.05$).
+
+Given that the number of reviews per novel is highly variable, with a minimum
+review count of `r numb(min(n_reviews))` and a maximum of `r numb(max(n_reviews))`,
+these findings may be skewed by a small number of volatile low-review novels. To
+assess the sensitivity of results to the sample composition, we re-estimate the
+ratings difference-in-difference model restricted to subsamples of matched-pairs
+in which both novels have at least 50, 100, and 200 reviews in the both the 
+pre-award and post-award periods.
 
 ```{r}
-#| echo: false
-#| eval: true
-#| message: false
+#| label: tbl-ratings-missing-robust
+#| tbl-cap: "Sensitivity Award Effects to Minimum Review Count Thresholds"
 #| warning: false
-#| label: fig-stanareyouokay
-#| fig-cap: "Checking the convergence of the MCMC algorithm"
-#| fig-subcap: ["Trace plot", "Rhat plot"]
-#| layout-ncol: 2
+#| message: false
+#| echo: false
 
-plot(first_model, "trace")
+ratings_model_k50 <- read_rds(here("models/ratings_model_k50.rds"))
+ratings_model_k100 <- read_rds(here("models/ratings_model_k100.rds"))
+ratings_model_k200 <- read_rds(here("models/ratings_model_k200.rds"))
 
-plot(first_model, "rhat")
+rows <- tribble(
+  ~term, ~m1, ~m2, ~m3, ~m4,
+  "N Matched-Pairs", 
+  ratings_model$fixef_sizes[["dyad"]],
+  ratings_model_k50$fixef_sizes[["dyad"]],
+  ratings_model_k100$fixef_sizes[["dyad"]],
+  ratings_model_k200$fixef_sizes[["dyad"]]
+) |> mutate(across(-term, as.character))
+attr(rows, "position") <- 8
+
+modelsummary::modelsummary(
+  list(
+    "Ratings (> 0)" = ratings_model,
+    "Ratings (> 50)" = ratings_model_k50,
+    "Ratings (> 100)" = ratings_model_k100,
+    "Ratings (> 200)" = ratings_model_k200
+  ),
+  coef_rename = c(
+    "winner" = "Winner",
+    "post_announcement" = "Post",
+    "winner:post_announcement" = "Winner x Post"
+  ),
+  statistic = "{std.error} ({p.value})",
+  gof_map = tribble(
+    ~raw, ~clean, ~fmt,
+    "nobs", "N", 0,
+    "aic", "AIC", 1,
+    "bic", "BIC", 1
+  ),
+  add_rows = rows,
+  notes = c(
+    "Matched-pair clustered standard errors are shown below coefficient estimates (p-values in parentheses).",
+    "All models include matched-pair fixed effects."
+  )
+)
 ```
 
+Table @tbl-ratings-missing-robust shows the results of the original ratings model
+compared to the restricted sample models. All estimates of the difference-in-differences
+coefficient remain near 0 and insignificant, suggesting that the null results observed
+in Table @tbl-ratings-results are not an artifact of influential novels with a low
+volume of reviews.
 
+# Discussion {#sec-discussion}
+
+This paper examined the impact of winning a major litary award on the perception
+of a novel's quality, using changes in Goodreads ratings over time to identify 
+shifts in readers' evaluations of quality after a novel publically recieves an 
+award. Following the approach of @kovacs2014, the ratings trajectory of winning 
+novels is compared to that of similar shortlisted novels using a difference-in-differences
+design with matched-pair fixed effects. This design aims to isolate the effect
+of award-winning from other ratings trends related to specific genres or periods.
+The results indicate that, contrary to prior work assessing the impact of awards
+on cultural products, found no evidence that awards negative impacted the reviews
+of award-winning novels or evidence that award winning novels recieved substantially
+more reviews in the post-award period than other finalists [@kovacs2014; @rossi2024; @rita2022].
+
+## Weaknesses and next steps {#sec-weaknesses}
+
+Several limitations remain in this analysis. Unlike in the analysis by @kovacs2014, 
+the matched-pair design failed to eliminate statistically significant differences 
+in the pre-award ratings of award-winning novels, suggesting that the matched-pair
+design may not have fully eliminated differences in the ratings trends of prizewinners
+and their corresponding finalists. Goodreads ratings as a measure of readers'
+perception of quality also face a number of shortcomings. For example, ratings
+are voluntary and asynchronous, meaning that changes in ratings may be attributable
+to changes in reviewer composition (e.g. readers who were gifted a prizewinning or
+shortlist novel) rather changes in the perception of individual readers. As noted
+in Section @sec-measurement, Goodreads ratings are also predisposed to tend towards
+the average or early ratings and contain a large proportion of sponsored reviews
+which may be biased.
 
 \newpage
-
 
 # References
 
