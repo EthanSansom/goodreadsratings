@@ -84,10 +84,7 @@ ratings <- feols(
 
 matched_pairs_counts <- matched_pairs_reviews |>
   group_by(dyad, post_announcement, winner) |>
-  summarize(
-    n_reviews = n(),
-    n_reviews_1year = sum(date_added < (winner_date + dyears(1)))
-  ) |>
+  summarize(n_reviews = n()) |>
   ungroup()
 
 popularity <- fenegbin(
@@ -96,8 +93,23 @@ popularity <- fenegbin(
   cluster = "dyad"
 )
 
-# Robustness -------------------------------------------------------------------
+## Parallel Trends -------------------------------------------------------------
 
+pre_trend_data <- matched_pairs_reviews |>
+  filter(post_announcement == 0) |>
+  mutate(
+    time_trend = (date_added - lubridate::as_datetime(winner_date)) / dmonths()
+  )
+
+parallel_trends <- feols(
+  rating ~ winner * time_trend | dyad,
+  data = pre_trend_data,
+  cluster = "dyad"
+)
+
+## Robustness ------------------------------------------------------------------
+
+## Minimum Reviews
 review_mins <- c(50, 100, 200)
 for (minimum in review_mins) {
   matched_pairs_reviews_minimums <- matched_pairs_reviews |>
@@ -129,4 +141,9 @@ write_rds(
 write_rds(
   popularity,
   "models/popularity_model.rds"
+)
+
+write_rds(
+  parallel_trends,
+  "models/parallel_trends_model.rds"
 )
