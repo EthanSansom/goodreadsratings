@@ -21,28 +21,29 @@ library(dplyr)
 library(purrr)
 library(readr)
 library(lubridate)
+library(here)
 
 set.seed(123)
 
 # Load Raw Data ----------------------------------------------------------------
 
-finalist_books <- read_csv("data/01-raw_data/finalist_books.csv")
-announcement_dates <- read_csv("data/01-raw_data/announcement_dates.csv")
+finalist_books <- read_csv(here("data/01-raw_data/finalist_books.csv"))
+announcement_dates <- read_csv(here("data/01-raw_data/announcement_dates.csv"))
 
 goodreads_books <- open_dataset(
-  "data/01-raw_data/goodreads_books.json.gz",
+  here("data/01-raw_data/goodreads_books.json.gz"),
   format = "json"
 )
 goodreads_authors <- open_dataset(
-  "data/01-raw_data/goodreads_book_authors.json.gz",
+  here("data/01-raw_data/goodreads_book_authors.json.gz"),
   format = "json"
 )
 goodreads_reviews <- open_dataset(
-  "data/01-raw_data/goodreads_reviews_dedup.json.gz",
+  here("data/01-raw_data/goodreads_reviews_dedup.json.gz"),
   format = "json"
 )
 goodreads_works <- open_dataset(
-  "data/01-raw_data/goodreads_book_works.json.gz",
+  here("data/01-raw_data/goodreads_book_works.json.gz"),
   format = "json"
 )
 
@@ -148,17 +149,17 @@ reviews_sample <- goodreads_reviews |>
 
 write_parquet(
   goodreads_finalist_works, 
-  "data/02-analysis_data/finalist_works.parquet"
+  here("data/02-analysis_data/finalist_works.parquet")
 )
 write_parquet(
   finalist_works_to_books, 
-  "data/02-analysis_data/works_to_books.parquet"
+  here("data/02-analysis_data/works_to_books.parquet")
 )
 write_parquet(
   goodreads_finalist_reviews, 
-  "data/02-analysis_data/book_reviews.parquet"
+  here("data/02-analysis_data/book_reviews.parquet")
 )
 write_parquet(
   reviews_sample,
-  "data/02-analysis_data/reviews_sample.parquet"
+  here("data/02-analysis_data/reviews_sample.parquet")
 )

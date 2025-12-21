@@ -15,9 +15,9 @@ library(fixest)
 
 # Load Data --------------------------------------------------------------------
 
-finalist_works <- read_parquet("data/02-analysis_data/finalist_works.parquet")
-works_to_books <- read_parquet("data/02-analysis_data/works_to_books.parquet")
-book_reviews <- read_parquet("data/02-analysis_data/book_reviews.parquet")
+finalist_works <- read_parquet(here("data/02-analysis_data/finalist_works.parquet"))
+works_to_books <- read_parquet(here("data/02-analysis_data/works_to_books.parquet"))
+book_reviews <- read_parquet(here("data/02-analysis_data/book_reviews.parquet"))
 
 finalist_works <- finalist_works |> filter(year <= 2016)
 
@@ -131,20 +131,20 @@ for (minimum in review_mins) {
 
 write_parquet(
   matched_pairs_reviews,
-  "data/02-analysis_data/matched_pairs_reviews.parquet"
+  here("data/02-analysis_data/matched_pairs_reviews.parquet")
 )
 
 write_rds(
   ratings,
-  "models/ratings_model.rds"
+  here("models/ratings_model.rds")
 )
 
 write_rds(
   popularity,
-  "models/popularity_model.rds"
+  here("models/popularity_model.rds")
 )
 
 write_rds(
   parallel_trends,
-  "models/parallel_trends_model.rds"
+  here("models/parallel_trends_model.rds")
 )

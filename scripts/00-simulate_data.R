@@ -11,11 +11,12 @@ library(dplyr)
 library(purrr)
 library(readr)
 library(lubridate)
+library(here)
 
 # Load Raw Data ----------------------------------------------------------------
 
-finalist_books <- read_csv("data/01-raw_data/finalist_books.csv")
-announcement_dates <- read_csv("data/01-raw_data/announcement_dates.csv")
+finalist_books <- read_csv(here("data/01-raw_data/finalist_books.csv"))
+announcement_dates <- read_csv(here("data/01-raw_data/announcement_dates.csv"))
 
 finalist_books <- finalist_books |> 
   left_join(announcement_dates, by = c("year", "award")) |>
@@ -105,5 +106,5 @@ simulated_reviews <- finalist_books |>
 
 write_csv(
   simulated_reviews,
-  "data/00-simulated_data/simulated_reviews.csv"
+  here("data/00-simulated_data/simulated_reviews.csv")
 )
