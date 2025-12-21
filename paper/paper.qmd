@@ -1,11 +1,11 @@
 ---
-title: "The Impact of Winning a Literary Award on Goodreads Ratings of Novels, 2010-2016"
+title: "The Impact of Winning a Literary Award on the Goodreads Ratings of Novels, 2010-2016"
 author: 
   - Ethan Sansom
 thanks: "Code and data are available at: [https://github.com/EthanSansom/goodreadsratings](https://github.com/EthanSansom/goodreadsratings)."
 date: today
 date-format: long
-abstract: "In the 2014 paper “The Paradox of Publicity: How Awards Can Negatively Affect the Evaluation of Quality” authors Kovács and Sharke find that, counterintuitively, winning a prestigious literary award decreased readers’ perception of prizewinning novels’ quality. To test the persistence of their findings, this analysis repeats a portion of the authors’ experiment using Goodreads reviews of prizewinning novels between 2010 and 2016 with a difference-in-differences design. Contrary to previous results, we find no evidence that winning a literary prize affects the post-award Goodreads ratings of prizewinning novels relative to other similar works. While these findings suggest that the ‘paradox of publicity’ may not hold in general, there are also several limitations to this analysis and of online review data in general which are discussed further."
+abstract: "In the 2014 paper “The Paradox of Publicity: How Awards Can Negatively Affect the Evaluation of Quality” authors Kovács and Sharkey find that, counterintuitively, winning a prestigious literary award decreased readers’ perception of prizewinning novels’ quality. To test the persistence of their findings, this analysis repeats a portion of the authors’ experiment using Goodreads reviews of prizewinning novels between 2010 and 2016 with a difference-in-differences design. Contrary to previous results, we find no evidence that winning a literary prize affects the post-award Goodreads ratings of prizewinning novels relative to other similar works. While these findings suggest that the ‘paradox of publicity’ may not hold in general, there are also several limitations to this analysis and of online review data in general which are discussed further."
 format: pdf
 header-includes:
   - \usepackage{float}
@@ -33,6 +33,7 @@ library(purrr)
 library(fixest)
 library(zoo)
 library(kableExtra)
+library(testthat)
 
 set.seed(123)
 ```
@@ -119,8 +120,8 @@ limitations of this analysis.
 This paper uses the R statistical software [@citeR] to load, clean, visualize,
 and model Goodreads ratings. The package `here` [@here] is used to construct
 relative file paths, packages `readr` [@readr] and `arrow` [@arrow] are used
-for reading and writing datasets and models, `dplyr` [@dplyr], `purrr` [@purrr],
-`stringr` [@stringr], and `lubridate` [@lubridate] are used for cleaning data,
+for reading and writing datasets and models, `testthat` [@testthat] is used for data validation,
+`dplyr` [@dplyr], `purrr` [@purrr], `stringr` [@stringr], and `lubridate` [@lubridate] are used for cleaning data,
 including character and date variables, `zoo` [@zoo] is used for calculating rolling
 averages, `fixest` [@fixest] is used for fitting the fixed-effects regression models 
 described in @sec-models, and finally `modelsummary` [@modelsummary], `tinytable` 
@@ -898,8 +899,8 @@ modelsummary::modelsummary(
   ),
   coef_rename = c(
     "winner" = "Winner",
-    "Month" = "time_trend",
-    "winner:time_trend" = "Winner x Month"
+    "time_trend" = "Months",
+    "winner:time_trend" = "Winner x Months"
   ),
   statistic = "{std.error} ({p.value})",
   gof_map = tribble(
