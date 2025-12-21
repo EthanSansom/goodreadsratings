@@ -1,7 +1,7 @@
 # Preamble ---------------------------------------------------------------------
 # Purpose: Simulates Goodreads reviews data of shortlisted novels.
 # Author: Ethan Sansom
-# Date: 15 December 2025
+# Date: 21 December 2025
 # Contact: ethan.sansom@mail.utoronto.ca
 # License: MIT
 
@@ -36,7 +36,7 @@ simulate_winner_rating <- function(n, period = c("pre-award", "post-award")) {
     # Implies a mean rating of 3.7
     prob <- c(0.05, 0.1+0.05, 0.15+0.05, 0.3-0.05, 0.4-0.05)
   }
-  sample(1:5, n, replace = TRUE, prob = prob)
+  sample(1L:5L, n, replace = TRUE, prob = prob)
 }
 
 simulate_finalist_rating <- function(n) {
