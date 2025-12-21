@@ -4,6 +4,7 @@
 # Date: 15 December 2025
 # Contact: ethan.sansom@mail.utoronto.ca
 # License: MIT
+# Pre-requisites: Run 01-clean_model_data.R to generate clean datasets.
 
 # Packages ---------------------------------------------------------------------
 
